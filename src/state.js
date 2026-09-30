@@ -1,8 +1,27 @@
 import { createWasmCrypto } from './wasm-crypto.js';
 
+// ===== دوال هاش مساعدة =====
 async function sha256Hex(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function sha384Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-384', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function sha512Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function hmacSha256Hex(secret, message) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function randomHex(n) {
@@ -82,24 +101,56 @@ export class PepperState {
     return data;
   }
 
+  // ===== Altcha: يدعم SHA-256/384/512 و HMAC-SHA256 =====
   async solveAltcha(challenge) {
-    const target = String(challenge.challenge).toLowerCase();
-    const salt = String(challenge.salt);
-    const max = Number(challenge.maxnumber ?? 50000);
+    const algorithm = String(challenge.algorithm || 'SHA-256').toUpperCase();
+    const target    = String(challenge.challenge).toLowerCase();
+    const salt      = String(challenge.salt);
+    const max       = Number(challenge.maxnumber ?? 50000);
+    const keyPrefix = String(challenge.keyPrefix ?? '');
+    const keySuffix = String(challenge.keySuffix ?? '');
+    const signature = challenge.signature || '';
+
     for (let number = 0; number <= max; number++) {
-      const digest = await sha256Hex(salt + String(number));
+      const input = `${salt}${number}${keyPrefix}${keySuffix}`;
+      let digest;
+
+      if (algorithm === 'SHA-256') {
+        digest = await sha256Hex(input);
+      } else if (algorithm === 'SHA-384') {
+        digest = await sha384Hex(input);
+      } else if (algorithm === 'SHA-512') {
+        digest = await sha512Hex(input);
+      } else if (algorithm === 'HMAC-SHA256') {
+        digest = await hmacSha256Hex(signature, input);
+      } else if (algorithm === 'HMAC-SHA384') {
+        // نادر لكن ممكن
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          'raw', enc.encode(signature),
+          { name: 'HMAC', hash: 'SHA-384' },
+          false, ['sign']
+        );
+        const sig = await crypto.subtle.sign('HMAC', key, enc.encode(input));
+        digest = [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+      } else {
+        throw new Error(`unsupported altcha algorithm: ${algorithm}`);
+      }
+
       if (digest === target) {
         const payload = {
           algorithm: challenge.algorithm,
           challenge: challenge.challenge,
-          number, salt,
+          number,
+          salt,
           signature: challenge.signature,
           took: 0
         };
         return btoa(JSON.stringify(payload));
       }
     }
-    throw new Error('Altcha solution not found');
+
+    throw new Error(`Altcha solution not found (algorithm=${algorithm}, max=${max})`);
   }
 
   async freshNonce() {
