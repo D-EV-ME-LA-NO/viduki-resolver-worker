@@ -1,0 +1,21 @@
+name = "viduki-resolver"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+
+[[durable_objects.bindings]]
+name = "PEPPER_STATE"
+class_name = "PepperState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PepperState"]
+
+[vars]
+VIDUKI_API_BASE = "https://api.viduki.net"
+VIDUKI_ORIGIN   = "https://www.viduki.net"
+CORS_ORIGIN     = "*"
