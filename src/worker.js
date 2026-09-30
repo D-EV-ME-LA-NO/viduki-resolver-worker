@@ -56,11 +56,6 @@ function findUrl(value) {
   return null;
 }
 
-async function getServers(env) {
-  const data = await getJson(env, '/main/servers');
-  return Array.isArray(data) ? data : (Array.isArray(data?.servers) ? data.servers : data?.data || []);
-}
-
 function getState(env) {
   const id = env.PEPPER_STATE.idFromName('global');
   return env.PEPPER_STATE.get(id);
@@ -76,6 +71,15 @@ async function resolvePath(env, path) {
   const data = await res.json();
   if (!res.ok || !data.ok) throw new Error(data.error || 'resolve failed');
   return data.data;
+}
+
+// ✅ التعديل: /main/servers صار مشفّر — نمرره عبر resolvePath
+async function getServers(env) {
+  const data = await resolvePath(env, '/main/servers');
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.servers)) return data.servers;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
 }
 
 async function resolveAll(env, input) {
